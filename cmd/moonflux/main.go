@@ -63,6 +63,10 @@ func run() error {
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 
-	server := httpserver.NewServer(cfg, log, pool)
+	server, err := httpserver.NewServer(cfg, log, pool)
+	if err != nil {
+		log.Error("initialize HTTP server", "error", err)
+		os.Exit(1)
+	}
 	return httpserver.Serve(ctx, server, cfg.App.ShutdownTimeout, log)
 }

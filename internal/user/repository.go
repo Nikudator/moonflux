@@ -89,3 +89,31 @@ func (r *Repository) SoftDelete(ctx context.Context, id string) error {
 
 	return nil
 }
+
+// GetByLogin returns an active user by nickname or email.
+// The login value is matched exactly.
+func (r *Repository) GetByLogin(ctx context.Context, login string) (User, error) {
+	var u User
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			id::text, nickname, email, first_name, last_name, patronymic,
+			role, birth_date, about, password_hash, created_at, updated_at, deleted_at
+		FROM users
+		WHERE deleted_at IS NULL
+		  AND (nickname = $1 OR email = $1)
+		LIMIT 1
+	`, login).Scan(
+		&u.ID, &u.Nickname, &u.Email, &u.FirstName, &u.LastName, &u.Patronymic,
+		&u.Role, &u.BirthDate, &u.About, &u.PasswordHash,
+		&u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrNotFound
+		}
+		return User{}, fmt.Errorf("get user by login: %w", err)
+	}
+
+	return u, nil
+}
