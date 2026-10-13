@@ -7,15 +7,20 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	appconfig "moonflux/internal/config"
+	"moonflux/internal/user"
 )
 
 // New builds the HTTP handler. /health checks process liveness; /ready also checks PostgreSQL.
 func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) http.Handler {
 	mux := http.NewServeMux()
+	userRepository := user.NewRepository(pool)
+	userService := user.NewService(userRepository)
+	mux.Handle("POST /users", user.NewHTTPHandler(userService))
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
