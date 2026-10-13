@@ -1,0 +1,43 @@
+app:
+  name: Moonflux
+  environment: development
+  http_address: "0.0.0.0:8080"
+  shutdown_timeout: 10s
+
+logging:
+  level: debug
+  format: json
+  add_source: true
+  access_log: true
+  security_log: true
+
+http:
+  # Add only actual proxy addresses/CIDRs. Empty means no proxy headers are trusted.
+  trusted_proxies: []
+  request_id_header: "X-Request-ID"
+
+audit:
+  enabled: true
+  storage: "postgres_and_logs"
+  retention_enabled: false
+  # Set when retention_enabled is true, e.g. 2160h for 90 days.
+  retention_period: 0s
+
+database:
+  # Замените значения на свои. Реальный config.yml не коммитить.
+  dsn: "postgres://moonflux:change-me@127.0.0.1:5432/moonflux?sslmode=disable"
+  max_conns: 10
+  min_conns: 1
+  max_conn_lifetime: 1h
+  max_conn_idle_time: 15m
+  health_check_period: 1m
+
+migrations:
+  directory: migrations
+
+security:
+  jwt_issuer: moonflux
+  access_token_ttl: 15m
+  refresh_token_ttl: 720h
+  # В production задаётся через защищённый секрет-хранилище/конфиг вне Git.
+  jwt_hmac_secret: "CHANGE-ME-TO-A-RANDOM-SECRET-AT-LEAST-32-BYTES"

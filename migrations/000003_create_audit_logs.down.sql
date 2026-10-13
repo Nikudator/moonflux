@@ -1,0 +1,2 @@
+-- Physical removal of audit history is intentionally not part of normal operations.
+-- This file is retained for migration documentation only; do not run automatically.

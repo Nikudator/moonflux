@@ -1,0 +1,40 @@
+services:
+  moonflux:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moonflux-app
+    restart: unless-stopped
+    ports:
+      - "10000:8080"
+    volumes:
+      - ./config/config.yml:/app/config/config.yml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - moonflux-net
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: moonflux-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: moonflux
+      POSTGRES_USER: moonflux
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ../data/postgresql:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moonflux -d moonflux"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - moonflux-net
+
+networks:
+  moonflux-net:
+
+volumes:
+  moonflux-pgdata:
