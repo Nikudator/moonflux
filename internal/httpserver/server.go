@@ -21,7 +21,9 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 	mux := http.NewServeMux()
 	userRepository := user.NewRepository(pool)
 	userService := user.NewService(userRepository)
+	profileService := user.NewProfileService(userRepository)
 	loginService := user.NewLoginService(userRepository)
+
 	mux.Handle("POST /users", user.NewHTTPHandler(userService))
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -55,7 +57,19 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 	mux.HandleFunc("/auth/login", authHandler.Login)
 	meHandler := auth.NewMeHandler(userRepository)
 	mux.Handle("GET /auth/me", tokenManager.Middleware(http.HandlerFunc(meHandler.Me)))
+	profileHandler := user.NewProfileHTTPHandler(
+		profileService,
+		func(r *http.Request) (string, bool) {
+			claims, ok := auth.ClaimsFromContext(r.Context())
+			if !ok {
+				return "", false
+			}
+			return claims.Subject, true
+		},
+	)
+	mux.Handle("PATCH /users/me", tokenManager.Middleware(http.HandlerFunc(profileHandler.UpdateMe)))
 	return Middleware(log, cfg.HTTP.TrustedProxies, cfg.HTTP.RequestIDHeader, cfg.Logging.AccessLog, mux), nil
+
 }
 
 func NewServer(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (*http.Server, error) {

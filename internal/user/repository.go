@@ -117,3 +117,74 @@ func (r *Repository) GetByLogin(ctx context.Context, login string) (User, error)
 
 	return u, nil
 }
+
+// UpdateProfile updates editable fields of an active user.
+func (r *Repository) UpdateProfile(
+	ctx context.Context,
+	id string,
+	in ProfileUpdateInput,
+) (User, error) {
+	if err := in.Validate(); err != nil {
+		return User{}, err
+	}
+
+	var u User
+
+	err := r.pool.QueryRow(ctx, `
+		UPDATE users
+		SET
+			nickname = CASE WHEN $2 THEN $3 ELSE nickname END,
+			first_name = CASE WHEN $4 THEN $5 ELSE first_name END,
+			last_name = CASE WHEN $6 THEN $7 ELSE last_name END,
+			patronymic = CASE WHEN $8 THEN $9 ELSE patronymic END,
+			birth_date = CASE WHEN $10 THEN $11 ELSE birth_date END,
+			about = CASE WHEN $12 THEN $13 ELSE about END,
+			updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING
+			id::text, nickname, email, first_name, last_name, patronymic,
+			role, birth_date, about, password_hash, created_at, updated_at, deleted_at
+	`,
+		id,
+		in.Nickname.Present, in.Nickname.Value,
+		in.FirstName.Present, in.FirstName.Value,
+		in.LastName.Present, in.LastName.Value,
+		in.Patronymic.Present, optionalStringValue(in.Patronymic),
+		in.BirthDate.Present, optionalBirthDateValue(in.BirthDate),
+		in.About.Present, in.About.Value,
+	).Scan(
+		&u.ID, &u.Nickname, &u.Email, &u.FirstName, &u.LastName, &u.Patronymic,
+		&u.Role, &u.BirthDate, &u.About, &u.PasswordHash,
+		&u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrNotFound
+		}
+
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return User{}, fmt.Errorf("%w: nickname", ErrConflict)
+		}
+
+		return User{}, fmt.Errorf("update user profile: %w", err)
+	}
+
+	return u, nil
+}
+
+func optionalStringValue(value Optional[string]) *string {
+	if !value.Present || value.Null {
+		return nil
+	}
+
+	return &value.Value
+}
+
+func optionalBirthDateValue(value Optional[time.Time]) *time.Time {
+	if !value.Present || value.Null {
+		return nil
+	}
+
+	return &value.Value
+}
