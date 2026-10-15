@@ -81,3 +81,22 @@ func (in ProfileUpdateInput) Validate() error {
 
 	return nil
 }
+
+// PasswordChangeInput contains the current and new passwords.
+type PasswordChangeInput struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// Validate checks the password change input.
+func (in PasswordChangeInput) Validate() error {
+	if in.CurrentPassword == "" || in.NewPassword == "" {
+		return ErrInvalidUser
+	}
+
+	if len([]rune(in.NewPassword)) < 8 {
+		return ErrInvalidUser
+	}
+
+	return nil
+}

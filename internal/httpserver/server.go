@@ -22,6 +22,7 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 	userRepository := user.NewRepository(pool)
 	userService := user.NewService(userRepository)
 	profileService := user.NewProfileService(userRepository)
+	passwordChangeService := user.NewPasswordChangeService(userRepository)
 	loginService := user.NewLoginService(userRepository)
 
 	mux.Handle("POST /users", user.NewHTTPHandler(userService))
@@ -56,7 +57,10 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 	authHandler := auth.NewHTTPHandler(authService)
 	mux.HandleFunc("/auth/login", authHandler.Login)
 	meHandler := auth.NewMeHandler(userRepository)
-	mux.Handle("GET /auth/me", tokenManager.Middleware(http.HandlerFunc(meHandler.Me)))
+	mux.Handle("GET /auth/me", tokenManager.Middleware(
+		userRepository,
+		http.HandlerFunc(meHandler.Me),
+	))
 	profileHandler := user.NewProfileHTTPHandler(
 		profileService,
 		func(r *http.Request) (string, bool) {
@@ -67,7 +71,26 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 			return claims.Subject, true
 		},
 	)
-	mux.Handle("PATCH /users/me", tokenManager.Middleware(http.HandlerFunc(profileHandler.UpdateMe)))
+	mux.Handle("PATCH /users/me", tokenManager.Middleware(
+		userRepository,
+		http.HandlerFunc(profileHandler.UpdateMe),
+	))
+	passwordChangeHandler := user.NewPasswordChangeHTTPHandler(
+		passwordChangeService,
+		func(r *http.Request) (string, bool) {
+			claims, ok := auth.ClaimsFromContext(r.Context())
+			if !ok {
+				return "", false
+			}
+			return claims.Subject, true
+		},
+	)
+
+	mux.Handle("PATCH /users/me/password", tokenManager.Middleware(
+		userRepository,
+		http.HandlerFunc(passwordChangeHandler.ChangeMe),
+	))
+
 	return Middleware(log, cfg.HTTP.TrustedProxies, cfg.HTTP.RequestIDHeader, cfg.Logging.AccessLog, mux), nil
 
 }

@@ -33,6 +33,7 @@ type User struct {
 	LastName     string
 	Patronymic   *string
 	Role         Role
+	TokenVersion int64
 	BirthDate    *time.Time
 	About        string
 	PasswordHash string

@@ -24,11 +24,12 @@ type TokenConfig struct {
 }
 
 type Claims struct {
-	Issuer    string `json:"iss"`
-	Subject   string `json:"sub"`
-	Role      int    `json:"role"`
-	IssuedAt  int64  `json:"iat"`
-	ExpiresAt int64  `json:"exp"`
+	Issuer       string `json:"iss"`
+	Subject      string `json:"sub"`
+	Role         int    `json:"role"`
+	TokenVersion int64  `json:"token_version"`
+	IssuedAt     int64  `json:"iat"`
+	ExpiresAt    int64  `json:"exp"`
 }
 
 type TokenManager struct {
@@ -61,19 +62,32 @@ func NewTokenManager(cfg TokenConfig) (*TokenManager, error) {
 }
 
 func (m *TokenManager) Issue(subject string, role int) (string, error) {
+	return m.IssueWithVersion(subject, role, 1)
+}
+
+func (m *TokenManager) IssueWithVersion(
+	subject string,
+	role int,
+	tokenVersion int64,
+) (string, error) {
 	if strings.TrimSpace(subject) == "" {
 		return "", errors.New("token subject must not be empty")
 	}
 	if role < 0 {
 		return "", errors.New("token role must not be negative")
 	}
+	if tokenVersion < 0 {
+		return "", errors.New("token version must not be negative")
+	}
+
 	now := m.now().UTC()
 	claims := Claims{
-		Issuer:    m.issuer,
-		Subject:   subject,
-		Role:      role,
-		IssuedAt:  now.Unix(),
-		ExpiresAt: now.Add(m.ttl).Unix(),
+		Issuer:       m.issuer,
+		Subject:      subject,
+		Role:         role,
+		TokenVersion: tokenVersion,
+		IssuedAt:     now.Unix(),
+		ExpiresAt:    now.Add(m.ttl).Unix(),
 	}
 
 	header, err := json.Marshal(map[string]string{
@@ -139,6 +153,7 @@ func (m *TokenManager) Validate(token string) (Claims, error) {
 	}
 
 	if claims.Issuer != m.issuer || claims.Subject == "" ||
+		claims.TokenVersion < 1 ||
 		claims.IssuedAt <= 0 || claims.ExpiresAt <= claims.IssuedAt {
 		return Claims{}, ErrInvalidToken
 	}

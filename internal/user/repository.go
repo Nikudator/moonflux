@@ -55,12 +55,12 @@ func (r *Repository) GetByID(ctx context.Context, id string) (User, error) {
 	err := r.pool.QueryRow(ctx, `
 		SELECT
 			id::text, nickname, email, first_name, last_name, patronymic,
-			role, birth_date, about, password_hash, created_at, updated_at, deleted_at
+			role, token_version, birth_date, about, password_hash, created_at, updated_at, deleted_at
 		FROM users
 		WHERE id = $1 AND deleted_at IS NULL
 	`, id).Scan(
 		&u.ID, &u.Nickname, &u.Email, &u.FirstName, &u.LastName, &u.Patronymic,
-		&u.Role, &u.BirthDate, &u.About, &u.PasswordHash,
+		&u.Role, &u.TokenVersion, &u.BirthDate, &u.About, &u.PasswordHash,
 		&u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
 	)
 	if err != nil {
@@ -71,6 +71,25 @@ func (r *Repository) GetByID(ctx context.Context, id string) (User, error) {
 	}
 
 	return u, nil
+}
+
+// GetTokenVersion returns the token version of an active user.
+func (r *Repository) GetTokenVersion(ctx context.Context, userID string) (int64, error) {
+	var version int64
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT token_version
+		FROM users
+		WHERE id = $1 AND deleted_at IS NULL
+	`, userID).Scan(&version)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		return 0, fmt.Errorf("get user token version: %w", err)
+	}
+
+	return version, nil
 }
 
 // SoftDelete marks an active user as deleted.
@@ -98,14 +117,14 @@ func (r *Repository) GetByLogin(ctx context.Context, login string) (User, error)
 	err := r.pool.QueryRow(ctx, `
 		SELECT
 			id::text, nickname, email, first_name, last_name, patronymic,
-			role, birth_date, about, password_hash, created_at, updated_at, deleted_at
+			role, token_version, birth_date, about, password_hash, created_at, updated_at, deleted_at
 		FROM users
 		WHERE deleted_at IS NULL
 		  AND (nickname = $1 OR email = $1)
 		LIMIT 1
 	`, login).Scan(
 		&u.ID, &u.Nickname, &u.Email, &u.FirstName, &u.LastName, &u.Patronymic,
-		&u.Role, &u.BirthDate, &u.About, &u.PasswordHash,
+		&u.Role, &u.TokenVersion, &u.BirthDate, &u.About, &u.PasswordHash,
 		&u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
 	)
 	if err != nil {
@@ -143,7 +162,7 @@ func (r *Repository) UpdateProfile(
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING
 			id::text, nickname, email, first_name, last_name, patronymic,
-			role, birth_date, about, password_hash, created_at, updated_at, deleted_at
+			role, token_version, birth_date, about, password_hash, created_at, updated_at, deleted_at
 	`,
 		id,
 		in.Nickname.Present, in.Nickname.Value,
@@ -154,7 +173,7 @@ func (r *Repository) UpdateProfile(
 		in.About.Present, in.About.Value,
 	).Scan(
 		&u.ID, &u.Nickname, &u.Email, &u.FirstName, &u.LastName, &u.Patronymic,
-		&u.Role, &u.BirthDate, &u.About, &u.PasswordHash,
+		&u.Role, &u.TokenVersion, &u.BirthDate, &u.About, &u.PasswordHash,
 		&u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
 	)
 	if err != nil {
@@ -171,6 +190,26 @@ func (r *Repository) UpdateProfile(
 	}
 
 	return u, nil
+}
+
+// ChangePassword updates the password hash and revokes existing tokens.
+func (r *Repository) ChangePassword(ctx context.Context, id, passwordHash string) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE users
+		SET password_hash = $2,
+		    token_version = token_version + 1,
+		    updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`, id, passwordHash)
+	if err != nil {
+		return fmt.Errorf("change user password: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }
 
 func optionalStringValue(value Optional[string]) *string {

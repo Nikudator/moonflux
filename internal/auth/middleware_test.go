@@ -1,17 +1,29 @@
 package auth
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 )
 
+type testTokenVersionProvider struct {
+	version int64
+	err     error
+}
+
+func (p testTokenVersionProvider) GetTokenVersion(_ context.Context, _ string) (int64, error) {
+	return p.version, p.err
+}
 func TestMiddlewareRejectsMissingToken(t *testing.T) {
 	manager := newTestTokenManager(t, time.Now())
-	handler := manager.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Fatal("protected handler must not be called")
-	}))
+	handler := manager.Middleware(
+		testTokenVersionProvider{version: 1},
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			t.Fatal("protected handler must not be called")
+		}))
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	rec := httptest.NewRecorder()
@@ -24,9 +36,11 @@ func TestMiddlewareRejectsMissingToken(t *testing.T) {
 
 func TestMiddlewareRejectsInvalidToken(t *testing.T) {
 	manager := newTestTokenManager(t, time.Now())
-	handler := manager.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Fatal("protected handler must not be called")
-	}))
+	handler := manager.Middleware(
+		testTokenVersionProvider{version: 1},
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			t.Fatal("protected handler must not be called")
+		}))
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	req.Header.Set("Authorization", "Bearer invalid-token")
@@ -45,16 +59,18 @@ func TestMiddlewarePassesClaimsToContext(t *testing.T) {
 		t.Fatalf("Issue() error = %v", err)
 	}
 
-	handler := manager.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := ClaimsFromContext(r.Context())
-		if !ok {
-			t.Fatal("claims not found in request context")
-		}
-		if claims.Subject != "test-user-id" {
-			t.Errorf("subject = %q, want test-user-id", claims.Subject)
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
+	handler := manager.Middleware(
+		testTokenVersionProvider{version: 1},
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, ok := ClaimsFromContext(r.Context())
+			if !ok {
+				t.Fatal("claims not found in request context")
+			}
+			if claims.Subject != "test-user-id" {
+				t.Errorf("subject = %q, want test-user-id", claims.Subject)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}))
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -84,9 +100,12 @@ func TestMiddlewareRejectsExpiredToken(t *testing.T) {
 		t.Fatalf("NewTokenManager() error = %v", err)
 	}
 
-	handler := expiredManager.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Fatal("protected handler must not be called")
-	}))
+	handler := expiredManager.Middleware(
+		testTokenVersionProvider{version: 1},
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			t.Fatal("protected handler must not be called")
+		}),
+	)
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -96,5 +115,54 @@ func TestMiddlewareRejectsExpiredToken(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+func TestMiddlewareRejectsMismatchedTokenVersion(t *testing.T) {
+	manager := newTestTokenManager(t, time.Now())
+	token, err := manager.IssueWithVersion("test-user-id", 1, 1)
+	if err != nil {
+		t.Fatalf("IssueWithVersion() error = %v", err)
+	}
+
+	handler := manager.Middleware(
+		testTokenVersionProvider{version: 2},
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			t.Fatal("protected handler must not be called")
+		}),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestMiddlewareFailsClosedWhenVersionCheckFails(t *testing.T) {
+	manager := newTestTokenManager(t, time.Now())
+	token, err := manager.IssueWithVersion("test-user-id", 1, 1)
+	if err != nil {
+		t.Fatalf("IssueWithVersion() error = %v", err)
+	}
+
+	handler := manager.Middleware(
+		testTokenVersionProvider{err: errors.New("database unavailable")},
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			t.Fatal("protected handler must not be called")
+		}),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
 }

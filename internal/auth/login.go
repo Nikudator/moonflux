@@ -49,7 +49,11 @@ func (s *LoginService) Login(
 		return LoginResult{}, err
 	}
 
-	token, err := s.tokens.Issue(u.ID, int(u.Role))
+	token, err := s.tokens.IssueWithVersion(
+		u.ID,
+		int(u.Role),
+		u.TokenVersion,
+	)
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("issue access token: %w", err)
 	}

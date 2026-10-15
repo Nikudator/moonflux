@@ -150,3 +150,56 @@ func repeatRune(r rune, count int) string {
 	}
 	return string(out)
 }
+func TestPasswordChangeInputValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   PasswordChangeInput
+		wantErr bool
+	}{
+		{
+			name: "valid passwords",
+			input: PasswordChangeInput{
+				CurrentPassword: "current-password",
+				NewPassword:     "new-pass-123",
+			},
+		},
+		{
+			name: "unicode password with eight characters",
+			input: PasswordChangeInput{
+				CurrentPassword: "current-password",
+				NewPassword:     "пароль🌙аб",
+			},
+		},
+		{
+			name: "empty current password",
+			input: PasswordChangeInput{
+				NewPassword: "new-pass-123",
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty new password",
+			input: PasswordChangeInput{
+				CurrentPassword: "current-password",
+			},
+			wantErr: true,
+		},
+		{
+			name: "new password too short",
+			input: PasswordChangeInput{
+				CurrentPassword: "current-password",
+				NewPassword:     "1234567",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.input.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

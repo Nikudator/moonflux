@@ -35,8 +35,9 @@ func TestLoginServiceIssuesAccessToken(t *testing.T) {
 
 	authenticator := &fakeAuthenticator{
 		user: user.User{
-			ID:   "user-123",
-			Role: user.RoleEditor,
+			ID:           "user-123",
+			Role:         user.RoleEditor,
+			TokenVersion: 1,
 		},
 	}
 	service, err := NewLoginService(authenticator, manager)
