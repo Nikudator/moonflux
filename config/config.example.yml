@@ -41,3 +41,22 @@ security:
   refresh_token_ttl: 720h
   # В production задаётся через защищённый секрет-хранилище/конфиг вне Git.
   jwt_hmac_secret: "CHANGE-ME-TO-A-RANDOM-SECRET-AT-LEAST-32-BYTES"
+
+mail:
+  enabled: false
+
+  smtp:
+    host: ""
+    port: 587
+    username: ""
+    password: ""
+    start_tls: true
+    timeout: 10s
+
+  from:
+    address: ""
+    name: "Moonflux"
+
+  verification:
+    token_ttl: 24h
+    resend_cooldown: 1m

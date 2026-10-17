@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	netmail "net/mail"
 	"net/netip"
 	"os"
 	"strings"
@@ -19,6 +20,7 @@ type Config struct {
 	Database   DatabaseConfig   `yaml:"database"`
 	Migrations MigrationsConfig `yaml:"migrations"`
 	Security   SecurityConfig   `yaml:"security"`
+	Mail       MailConfig       `yaml:"mail"`
 }
 
 type AppConfig struct {
@@ -66,6 +68,31 @@ type SecurityConfig struct {
 	AccessTokenTTL  time.Duration `yaml:"access_token_ttl"`
 	RefreshTokenTTL time.Duration `yaml:"refresh_token_ttl"`
 	JWTHMACSecret   string        `yaml:"jwt_hmac_secret"`
+}
+type MailConfig struct {
+	Enabled      bool                   `yaml:"enabled"`
+	SMTP         SMTPConfig             `yaml:"smtp"`
+	From         MailFromConfig         `yaml:"from"`
+	Verification MailVerificationConfig `yaml:"verification"`
+}
+
+type SMTPConfig struct {
+	Host     string        `yaml:"host"`
+	Port     int           `yaml:"port"`
+	Username string        `yaml:"username"`
+	Password string        `yaml:"password"`
+	StartTLS bool          `yaml:"start_tls"`
+	Timeout  time.Duration `yaml:"timeout"`
+}
+
+type MailFromConfig struct {
+	Address string `yaml:"address"`
+	Name    string `yaml:"name"`
+}
+
+type MailVerificationConfig struct {
+	TokenTTL       time.Duration `yaml:"token_ttl"`
+	ResendCooldown time.Duration `yaml:"resend_cooldown"`
 }
 
 func Load(path string) (Config, error) {
@@ -144,6 +171,45 @@ func (c Config) Validate() error {
 			if _, addrErr := netip.ParseAddr(raw); addrErr != nil {
 				problems = append(problems, fmt.Sprintf("http.trusted_proxies entry %q must be an IP or CIDR", raw))
 			}
+		}
+	}
+	if c.Mail.SMTP.Timeout < 0 {
+		problems = append(problems, "mail.smtp.timeout must not be negative")
+	}
+	if c.Mail.Verification.TokenTTL < 0 {
+		problems = append(problems, "mail.verification.token_ttl must not be negative")
+	}
+	if c.Mail.Verification.ResendCooldown < 0 {
+		problems = append(problems, "mail.verification.resend_cooldown must not be negative")
+	}
+
+	if c.Mail.Enabled {
+		if strings.TrimSpace(c.Mail.SMTP.Host) == "" {
+			problems = append(problems, "mail.smtp.host is required when mail is enabled")
+		}
+		if c.Mail.SMTP.Port < 1 || c.Mail.SMTP.Port > 65535 {
+			problems = append(problems, "mail.smtp.port must be between 1 and 65535")
+		}
+		if c.Mail.SMTP.Timeout <= 0 {
+			problems = append(problems, "mail.smtp.timeout must be positive when mail is enabled")
+		}
+		if (c.Mail.SMTP.Username == "") != (c.Mail.SMTP.Password == "") {
+			problems = append(problems, "mail.smtp.username and mail.smtp.password must both be set or both be empty")
+		}
+
+		address := strings.TrimSpace(c.Mail.From.Address)
+		parsedAddress, err := netmail.ParseAddress(address)
+		if err != nil || parsedAddress.Address != address {
+			problems = append(problems, "mail.from.address must be a valid email address")
+		}
+		if strings.TrimSpace(c.Mail.From.Name) == "" {
+			problems = append(problems, "mail.from.name is required when mail is enabled")
+		}
+		if c.Mail.Verification.TokenTTL <= 0 {
+			problems = append(problems, "mail.verification.token_ttl must be positive when mail is enabled")
+		}
+		if c.Mail.Verification.ResendCooldown <= 0 {
+			problems = append(problems, "mail.verification.resend_cooldown must be positive when mail is enabled")
 		}
 	}
 	if len(problems) > 0 {
