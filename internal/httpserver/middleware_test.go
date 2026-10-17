@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveClientIPIgnoresForwardedHeaderFromUntrustedRemote(t *testing.T) {
@@ -227,5 +228,45 @@ func TestParseTrustedMasksCIDR(t *testing.T) {
 	want := "10.0.0.0/8"
 	if got := trusted[0].String(); got != want {
 		t.Fatalf("trusted prefix = %q, want %q", got, want)
+	}
+}
+func TestLoginRateLimiterIgnoresSpoofedForwardedIP(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	limiter := NewIPRateLimiter(1, time.Minute)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := Middleware(
+		log,
+		nil, // Нет доверенных прокси.
+		"X-Request-ID",
+		false,
+		limiter.Middleware(next),
+	)
+
+	sendRequest := func(forwardedIP string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
+		req.RemoteAddr = "198.51.100.7:12345"
+		req.Header.Set("X-Forwarded-For", forwardedIP)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	first := sendRequest("203.0.113.10")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want 200", first.Code)
+	}
+
+	second := sendRequest("203.0.113.20")
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want 429", second.Code)
+	}
+
+	if second.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header")
 	}
 }

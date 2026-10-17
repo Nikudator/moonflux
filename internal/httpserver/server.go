@@ -55,7 +55,10 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 	}
 
 	authHandler := auth.NewHTTPHandler(authService)
-	mux.HandleFunc("/auth/login", authHandler.Login)
+	loginRateLimiter := NewIPRateLimiter(5, time.Minute)
+	mux.Handle("POST /auth/login", loginRateLimiter.Middleware(
+		http.HandlerFunc(authHandler.Login),
+	))
 	meHandler := auth.NewMeHandler(userRepository)
 	mux.Handle("GET /auth/me", tokenManager.Middleware(
 		userRepository,
