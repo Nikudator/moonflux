@@ -44,6 +44,19 @@ type User struct {
 
 // Validate checks the fields required by the database schema.
 func (u User) Validate() error {
+	if err := u.ValidateFields(); err != nil {
+		return err
+	}
+
+	if u.PasswordHash == "" {
+		return ErrInvalidUser
+	}
+
+	return nil
+}
+
+// ValidateFields checks user fields independently of the password hash.
+func (u User) ValidateFields() error {
 	if strings.TrimSpace(u.Nickname) == "" ||
 		len(u.Nickname) > 40 {
 		return ErrInvalidUser
@@ -68,10 +81,6 @@ func (u User) Validate() error {
 	}
 
 	if !validRole(u.Role) {
-		return ErrInvalidUser
-	}
-
-	if u.PasswordHash == "" {
 		return ErrInvalidUser
 	}
 

@@ -141,3 +141,15 @@ func TestValidRole(t *testing.T) {
 		})
 	}
 }
+func TestUserValidateFieldsDoesNotRequirePasswordHash(t *testing.T) {
+	u := validTestUser()
+	u.PasswordHash = ""
+
+	if err := u.ValidateFields(); err != nil {
+		t.Fatalf("ValidateFields() error = %v, want nil", err)
+	}
+
+	if err := u.Validate(); !errors.Is(err, ErrInvalidUser) {
+		t.Fatalf("Validate() error = %v, want %v", err, ErrInvalidUser)
+	}
+}

@@ -62,7 +62,16 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (User, erro
 			input.Patronymic = &patronymic
 		}
 	}
-
+	if err := (User{
+		Nickname:   input.Nickname,
+		Email:      input.Email,
+		FirstName:  input.FirstName,
+		LastName:   input.LastName,
+		Patronymic: input.Patronymic,
+		Role:       RoleUser,
+	}).ValidateFields(); err != nil {
+		return User{}, err
+	}
 	hash, err := HashPassword(input.Password)
 	if err != nil {
 		return User{}, fmt.Errorf("hash registration password: %w", err)
