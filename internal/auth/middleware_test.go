@@ -51,7 +51,28 @@ func TestMiddlewareRejectsInvalidToken(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
 	}
 }
+func TestMiddlewareRejectsInvalidTokenBeforeVersionCheck(t *testing.T) {
+	manager := newTestTokenManager(t, time.Now())
 
+	handler := manager.Middleware(
+		testTokenVersionProvider{
+			err: errors.New("database unavailable"),
+		},
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			t.Fatal("protected handler must not be called")
+		}),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer invalid-token")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
 func TestMiddlewarePassesClaimsToContext(t *testing.T) {
 	manager := newTestTokenManager(t, time.Now())
 	token, err := manager.Issue("test-user-id", 1)

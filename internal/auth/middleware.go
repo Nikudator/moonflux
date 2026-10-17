@@ -41,6 +41,16 @@ func (m *TokenManager) Middleware(
 		}
 
 		claims, err := m.Validate(token)
+		if err != nil {
+			if errors.Is(err, ErrInvalidToken) || errors.Is(err, ErrExpiredToken) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			http.Error(w, "authentication unavailable", http.StatusInternalServerError)
+			return
+		}
+
 		currentVersion, err := provider.GetTokenVersion(r.Context(), claims.Subject)
 		if err != nil {
 			if errors.Is(err, user.ErrNotFound) {

@@ -103,6 +103,14 @@ func TestProfileHTTPHandlerUpdateMeRejectsInvalidBody(t *testing.T) {
 		{name: "array body", body: `[]`},
 		{name: "invalid nickname", body: `{"nickname":"   "}`},
 		{name: "null about", body: `{"about":null}`},
+		{
+			name: "multiple JSON values",
+			body: `{"nickname":"valid"} true`,
+		},
+		{
+			name: "body larger than limit",
+			body: `{"about":"` + strings.Repeat("a", (1<<20)+1) + `"}`,
+		},
 	}
 
 	for _, tt := range tests {
