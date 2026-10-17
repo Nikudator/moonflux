@@ -25,7 +25,10 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 	passwordChangeService := user.NewPasswordChangeService(userRepository)
 	loginService := user.NewLoginService(userRepository)
 
-	mux.Handle("POST /users", user.NewHTTPHandler(userService))
+	registrationRateLimiter := NewIPRateLimiter(5, time.Minute)
+	mux.Handle("POST /users", registrationRateLimiter.Middleware(
+		user.NewHTTPHandler(userService),
+	))
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

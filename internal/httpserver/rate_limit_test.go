@@ -137,3 +137,41 @@ func TestIPRateLimiterRejectsInvalidConfiguration(t *testing.T) {
 func contextWithClientIP(ctx context.Context, ip string) context.Context {
 	return context.WithValue(ctx, clientIPKey, ip)
 }
+
+func TestRegistrationRateLimiterReturns429(t *testing.T) {
+	limiter := NewIPRateLimiter(1, time.Minute)
+	var calls atomic.Int32
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusCreated)
+	})
+
+	handler := limiter.Middleware(next)
+
+	newRequest := func() *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/users", nil)
+		ctx := contextWithClientIP(req.Context(), "192.0.2.30")
+		return req.WithContext(ctx)
+	}
+
+	first := httptest.NewRecorder()
+	handler.ServeHTTP(first, newRequest())
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first status = %d, want 201", first.Code)
+	}
+
+	second := httptest.NewRecorder()
+	handler.ServeHTTP(second, newRequest())
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want 429", second.Code)
+	}
+
+	if second.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header")
+	}
+
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("next handler calls = %d, want 1", got)
+	}
+}
