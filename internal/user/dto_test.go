@@ -10,6 +10,7 @@ func TestToPublicDoesNotExposePasswordHash(t *testing.T) {
 	u := validTestUser()
 	u.PasswordHash = "secret-hash"
 	u.TokenVersion = 42
+	u.EmailVerifiedAt = &u.UpdatedAt
 	data, err := json.Marshal(u.ToPublic())
 	if err != nil {
 		t.Fatalf("Marshal() error = %v", err)
@@ -27,6 +28,9 @@ func TestToPublicDoesNotExposePasswordHash(t *testing.T) {
 	}
 	if strings.Contains(result, "token_version") {
 		t.Fatal("public response contains token_version field")
+	}
+	if strings.Contains(result, "email_verified_at") {
+		t.Fatal("public response contains email_verified_at field")
 	}
 	if !strings.Contains(result, `"nickname":"moonflux"`) {
 		t.Fatalf("public response missing nickname: %s", result)

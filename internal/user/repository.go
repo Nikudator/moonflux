@@ -54,15 +54,16 @@ func (r *Repository) GetByID(ctx context.Context, id string) (User, error) {
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT
-			id::text, nickname, email, first_name, last_name, patronymic,
+			id::text, nickname, email, email_verified_at, first_name, last_name, patronymic,
 			role, token_version, birth_date, about, password_hash, created_at, updated_at, deleted_at
 		FROM users
 		WHERE id = $1 AND deleted_at IS NULL
 	`, id).Scan(
-		&u.ID, &u.Nickname, &u.Email, &u.FirstName, &u.LastName, &u.Patronymic,
+		&u.ID, &u.Nickname, &u.Email, &u.EmailVerifiedAt, &u.FirstName, &u.LastName, &u.Patronymic,
 		&u.Role, &u.TokenVersion, &u.BirthDate, &u.About, &u.PasswordHash,
 		&u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
 	)
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -116,14 +117,14 @@ func (r *Repository) GetByLogin(ctx context.Context, login string) (User, error)
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT
-			id::text, nickname, email, first_name, last_name, patronymic,
+			id::text, nickname, email, email_verified_at, first_name, last_name, patronymic,
 			role, token_version, birth_date, about, password_hash, created_at, updated_at, deleted_at
 		FROM users
 		WHERE deleted_at IS NULL
 		  AND (nickname = $1 OR email = $1)
 		LIMIT 1
 	`, login).Scan(
-		&u.ID, &u.Nickname, &u.Email, &u.FirstName, &u.LastName, &u.Patronymic,
+		&u.ID, &u.Nickname, &u.Email, &u.EmailVerifiedAt, &u.FirstName, &u.LastName, &u.Patronymic,
 		&u.Role, &u.TokenVersion, &u.BirthDate, &u.About, &u.PasswordHash,
 		&u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
 	)
@@ -161,7 +162,7 @@ func (r *Repository) UpdateProfile(
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING
-			id::text, nickname, email, first_name, last_name, patronymic,
+			id::text, nickname, email, email_verified_at, first_name, last_name, patronymic,
 			role, token_version, birth_date, about, password_hash, created_at, updated_at, deleted_at
 	`,
 		id,
@@ -172,7 +173,7 @@ func (r *Repository) UpdateProfile(
 		in.BirthDate.Present, optionalBirthDateValue(in.BirthDate),
 		in.About.Present, in.About.Value,
 	).Scan(
-		&u.ID, &u.Nickname, &u.Email, &u.FirstName, &u.LastName, &u.Patronymic,
+		&u.ID, &u.Nickname, &u.Email, &u.EmailVerifiedAt, &u.FirstName, &u.LastName, &u.Patronymic,
 		&u.Role, &u.TokenVersion, &u.BirthDate, &u.About, &u.PasswordHash,
 		&u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
 	)

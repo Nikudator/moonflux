@@ -26,20 +26,21 @@ var (
 // User represents an account stored in PostgreSQL.
 // PasswordHash must never be included in public API responses.
 type User struct {
-	ID           string
-	Nickname     string
-	Email        *string
-	FirstName    string
-	LastName     string
-	Patronymic   *string
-	Role         Role
-	TokenVersion int64
-	BirthDate    *time.Time
-	About        string
-	PasswordHash string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	DeletedAt    *time.Time
+	ID              string
+	Nickname        string
+	Email           *string
+	EmailVerifiedAt *time.Time
+	FirstName       string
+	LastName        string
+	Patronymic      *string
+	Role            Role
+	TokenVersion    int64
+	BirthDate       *time.Time
+	About           string
+	PasswordHash    string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DeletedAt       *time.Time
 }
 
 // Validate checks the fields required by the database schema.

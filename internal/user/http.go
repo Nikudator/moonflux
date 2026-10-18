@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -18,16 +19,35 @@ type registerRequest struct {
 	Password   string  `json:"password"`
 }
 
+type VerificationSender func(
+	ctx context.Context,
+	userID string,
+	email string,
+) error
+
 // NewHTTPHandler creates HTTP handlers for user operations.
 func NewHTTPHandler(service *Service) http.Handler {
+	return NewHTTPHandlerWithVerification(service, nil)
+}
+
+// NewHTTPHandlerWithVerification creates user handlers with optional email verification.
+func NewHTTPHandlerWithVerification(
+	service *Service,
+	sendVerification VerificationSender,
+) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /users", func(w http.ResponseWriter, r *http.Request) {
-		handleRegister(w, r, service)
+		handleRegister(w, r, service, sendVerification)
 	})
 	return mux
 }
 
-func handleRegister(w http.ResponseWriter, r *http.Request, service *Service) {
+func handleRegister(
+	w http.ResponseWriter,
+	r *http.Request,
+	service *Service,
+	sendVerification VerificationSender,
+) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRegistrationBodySize)
 
 	decoder := json.NewDecoder(r.Body)
@@ -73,6 +93,13 @@ func handleRegister(w http.ResponseWriter, r *http.Request, service *Service) {
 			})
 		}
 		return
+	}
+
+	if sendVerification != nil && created.Email != nil {
+		if err := sendVerification(r.Context(), created.ID, *created.Email); err != nil {
+			http.Error(w, "unable to send verification email", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	writeUserJSON(w, http.StatusCreated, created.ToPublic())

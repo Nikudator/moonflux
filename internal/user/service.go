@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,15 +17,19 @@ type UserCreator interface {
 
 // Service implements user-related business rules.
 type Service struct {
-	repo UserCreator
-	now  func() time.Time
+	repo         UserCreator
+	now          func() time.Time
+	requireEmail bool
 }
 
+var ErrEmailRequired = errors.New("email is required")
+
 // NewService creates a user service.
-func NewService(repo UserCreator) *Service {
+func NewService(repo UserCreator, requireEmail bool) *Service {
 	return &Service{
-		repo: repo,
-		now:  func() time.Time { return time.Now().UTC() },
+		repo:         repo,
+		now:          func() time.Time { return time.Now().UTC() },
+		requireEmail: requireEmail,
 	}
 }
 
@@ -52,6 +57,9 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (User, erro
 		} else {
 			input.Email = &email
 		}
+	}
+	if s.requireEmail && input.Email == nil {
+		return User{}, ErrEmailRequired
 	}
 
 	if input.Patronymic != nil {

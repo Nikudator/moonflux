@@ -36,7 +36,7 @@ func TestLoginServiceAuthenticate(t *testing.T) {
 			PasswordHash: hash,
 		},
 	}
-	service := NewLoginService(repo)
+	service := NewLoginService(repo, false)
 
 	u, err := service.Authenticate(context.Background(), LoginInput{
 		Login:    "  moonflux  ",
@@ -65,7 +65,7 @@ func TestLoginServiceRejectsWrongPassword(t *testing.T) {
 			PasswordHash: hash,
 		},
 	}
-	service := NewLoginService(repo)
+	service := NewLoginService(repo, false)
 
 	_, err = service.Authenticate(context.Background(), LoginInput{
 		Login:    "moonflux",
@@ -78,7 +78,7 @@ func TestLoginServiceRejectsWrongPassword(t *testing.T) {
 
 func TestLoginServiceHidesUnknownUser(t *testing.T) {
 	repo := &fakeLoginRepository{err: ErrNotFound}
-	service := NewLoginService(repo)
+	service := NewLoginService(repo, false)
 
 	_, err := service.Authenticate(context.Background(), LoginInput{
 		Login:    "unknown",
@@ -91,7 +91,7 @@ func TestLoginServiceHidesUnknownUser(t *testing.T) {
 
 func TestLoginServiceRejectsEmptyCredentials(t *testing.T) {
 	repo := &fakeLoginRepository{}
-	service := NewLoginService(repo)
+	service := NewLoginService(repo, false)
 
 	for _, input := range []LoginInput{
 		{Login: "", Password: "password"},
@@ -112,7 +112,7 @@ func TestLoginServiceRejectsEmptyCredentials(t *testing.T) {
 func TestLoginServicePropagatesRepositoryError(t *testing.T) {
 	repositoryErr := errors.New("database unavailable")
 	repo := &fakeLoginRepository{err: repositoryErr}
-	service := NewLoginService(repo)
+	service := NewLoginService(repo, false)
 
 	_, err := service.Authenticate(context.Background(), LoginInput{
 		Login:    "moonflux",
@@ -120,5 +120,53 @@ func TestLoginServicePropagatesRepositoryError(t *testing.T) {
 	})
 	if !errors.Is(err, repositoryErr) {
 		t.Fatalf("Authenticate() error = %v, want wrapped repository error", err)
+	}
+}
+
+func TestLoginServiceRejectsUnverifiedEmail(t *testing.T) {
+	hash, err := HashPassword("correct-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := &fakeLoginRepository{
+		user: User{
+			ID:              "user-123",
+			PasswordHash:    hash,
+			EmailVerifiedAt: nil,
+		},
+	}
+	service := NewLoginService(repo, true)
+
+	_, err = service.Authenticate(context.Background(), LoginInput{
+		Login:    "moonflux",
+		Password: "correct-password",
+	})
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("Authenticate() error = %v, want ErrInvalidCredentials", err)
+	}
+}
+
+func TestLoginServiceAllowsUnverifiedEmailWhenDisabled(t *testing.T) {
+	hash, err := HashPassword("correct-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := &fakeLoginRepository{
+		user: User{
+			ID:              "user-123",
+			PasswordHash:    hash,
+			EmailVerifiedAt: nil,
+		},
+	}
+	service := NewLoginService(repo, false)
+
+	_, err = service.Authenticate(context.Background(), LoginInput{
+		Login:    "moonflux",
+		Password: "correct-password",
+	})
+	if err != nil {
+		t.Fatalf("Authenticate() error = %v, want nil", err)
 	}
 }

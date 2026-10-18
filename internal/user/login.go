@@ -19,11 +19,18 @@ type LoginRepository interface {
 }
 
 type LoginService struct {
-	repository LoginRepository
+	repository           LoginRepository
+	requireVerifiedEmail bool
 }
 
-func NewLoginService(repository LoginRepository) *LoginService {
-	return &LoginService{repository: repository}
+func NewLoginService(
+	repository LoginRepository,
+	requireVerifiedEmail bool,
+) *LoginService {
+	return &LoginService{
+		repository:           repository,
+		requireVerifiedEmail: requireVerifiedEmail,
+	}
 }
 
 // Authenticate validates the login and password.
@@ -45,10 +52,14 @@ func (s *LoginService) Authenticate(
 	}
 
 	valid, err := VerifyPassword(input.Password, u.PasswordHash)
+
 	if err != nil {
 		return User{}, fmt.Errorf("verify stored password hash: %w", err)
 	}
 	if !valid {
+		return User{}, ErrInvalidCredentials
+	}
+	if s.requireVerifiedEmail && u.EmailVerifiedAt == nil {
 		return User{}, ErrInvalidCredentials
 	}
 

@@ -13,6 +13,7 @@ import (
 
 	"moonflux/internal/auth"
 	appconfig "moonflux/internal/config"
+	"moonflux/internal/emailverification"
 	"moonflux/internal/user"
 )
 
@@ -20,15 +21,13 @@ import (
 func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handler, error) {
 	mux := http.NewServeMux()
 	userRepository := user.NewRepository(pool)
-	userService := user.NewService(userRepository)
+	userService := user.NewService(userRepository, cfg.Mail.Enabled)
 	profileService := user.NewProfileService(userRepository)
 	passwordChangeService := user.NewPasswordChangeService(userRepository)
-	loginService := user.NewLoginService(userRepository)
-
+	loginService := user.NewLoginService(userRepository, cfg.Mail.Enabled)
 	registrationRateLimiter := NewIPRateLimiter(5, time.Minute)
-	mux.Handle("POST /users", registrationRateLimiter.Middleware(
-		user.NewHTTPHandler(userService),
-	))
+
+	var registrationSender user.VerificationSender
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -57,6 +56,65 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 		return nil, err
 	}
 
+	if cfg.Mail.Enabled {
+		verificationRepository := emailverification.NewPostgresRepository(pool)
+
+		verificationService, err := emailverification.NewService(
+			verificationRepository,
+			cfg.Mail.Verification.TokenTTL,
+			cfg.Mail.Verification.ResendCooldown,
+		)
+		if err != nil {
+			log.Error("initialize email verification service", "error", err)
+			return nil, err
+		}
+
+		mailer, err := emailverification.NewSMTPMailer(emailverification.SMTPConfig{
+			Host:     cfg.Mail.SMTP.Host,
+			Port:     cfg.Mail.SMTP.Port,
+			Username: cfg.Mail.SMTP.Username,
+			Password: cfg.Mail.SMTP.Password,
+			From:     cfg.Mail.From.Address,
+			FromName: cfg.Mail.From.Name,
+			BaseURL:  cfg.Mail.Verification.BaseURL,
+			Timeout:  cfg.Mail.SMTP.Timeout,
+		})
+		if err != nil {
+			log.Error("initialize SMTP mailer", "error", err)
+			return nil, err
+		}
+
+		notificationService, err := emailverification.NewNotificationService(
+			verificationService,
+			mailer,
+		)
+		if err != nil {
+			log.Error("initialize email notification service", "error", err)
+			return nil, err
+		}
+
+		registrationSender = notificationService.Send
+
+		verificationHandler := emailverification.NewHTTPHandlerWithResenderAndLogger(
+			verificationService,
+			notificationService,
+			log,
+		)
+
+		verificationRateLimiter := NewIPRateLimiter(5, time.Minute)
+		resendVerificationRateLimiter := NewIPRateLimiter(3, time.Minute)
+
+		mux.Handle("POST /auth/verify-email", verificationRateLimiter.Middleware(
+			http.HandlerFunc(verificationHandler.HandleVerify),
+		))
+
+		mux.Handle("POST /auth/resend-verification", resendVerificationRateLimiter.Middleware(
+			http.HandlerFunc(verificationHandler.HandleResend),
+		))
+	}
+	mux.Handle("POST /users", registrationRateLimiter.Middleware(
+		user.NewHTTPHandlerWithVerification(userService, registrationSender),
+	))
 	authHandler := auth.NewHTTPHandler(authService)
 	loginRateLimiter := NewIPRateLimiter(5, time.Minute)
 	mux.Handle("POST /auth/login", loginRateLimiter.Middleware(

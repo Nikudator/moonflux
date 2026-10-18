@@ -23,7 +23,6 @@ func (f *httpTestCreator) Create(_ context.Context, u User) error {
 
 func TestRegisterHandlerSuccess(t *testing.T) {
 	repo := &httpTestCreator{}
-	handler := NewHTTPHandler(NewService(repo))
 
 	body := `{
 		"nickname": "moonflux",
@@ -36,6 +35,7 @@ func TestRegisterHandlerSuccess(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
+	handler := NewHTTPHandler(NewService(repo, false))
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusCreated {
@@ -62,10 +62,10 @@ func TestRegisterHandlerSuccess(t *testing.T) {
 
 func TestRegisterHandlerRejectsInvalidJSON(t *testing.T) {
 	repo := &httpTestCreator{}
-	handler := NewHTTPHandler(NewService(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(`{"nickname":`))
 	rec := httptest.NewRecorder()
+	handler := NewHTTPHandler(NewService(repo, false))
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -78,7 +78,6 @@ func TestRegisterHandlerRejectsInvalidJSON(t *testing.T) {
 
 func TestRegisterHandlerRejectsUnknownFields(t *testing.T) {
 	repo := &httpTestCreator{}
-	handler := NewHTTPHandler(NewService(repo))
 
 	body := `{
 		"nickname": "moonflux",
@@ -89,6 +88,7 @@ func TestRegisterHandlerRejectsUnknownFields(t *testing.T) {
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
 	rec := httptest.NewRecorder()
+	handler := NewHTTPHandler(NewService(repo, false))
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -101,7 +101,6 @@ func TestRegisterHandlerRejectsUnknownFields(t *testing.T) {
 
 func TestRegisterHandlerConflict(t *testing.T) {
 	repo := &httpTestCreator{err: ErrConflict}
-	handler := NewHTTPHandler(NewService(repo))
 
 	body := `{
 		"nickname": "moonflux",
@@ -111,6 +110,7 @@ func TestRegisterHandlerConflict(t *testing.T) {
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
 	rec := httptest.NewRecorder()
+	handler := NewHTTPHandler(NewService(repo, false))
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusConflict {
@@ -120,7 +120,6 @@ func TestRegisterHandlerConflict(t *testing.T) {
 
 func TestRegisterHandlerHidesInternalErrors(t *testing.T) {
 	repo := &httpTestCreator{err: errors.New("database credentials leaked")}
-	handler := NewHTTPHandler(NewService(repo))
 
 	body := `{
 		"nickname": "moonflux",
@@ -130,6 +129,7 @@ func TestRegisterHandlerHidesInternalErrors(t *testing.T) {
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
 	rec := httptest.NewRecorder()
+	handler := NewHTTPHandler(NewService(repo, false))
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
@@ -137,5 +137,89 @@ func TestRegisterHandlerHidesInternalErrors(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "database credentials leaked") {
 		t.Fatal("response exposes internal error")
+	}
+}
+
+func TestRegisterHandlerSendsVerification(t *testing.T) {
+	repo := &httpTestCreator{}
+	var senderCalled bool
+	var senderUserID, senderEmail string
+
+	sender := VerificationSender(func(
+		_ context.Context,
+		userID string,
+		email string,
+	) error {
+		senderCalled = true
+		senderUserID = userID
+		senderEmail = email
+		return nil
+	})
+
+	body := `{
+		"nickname": "moonflux",
+		"email": "moon@example.com",
+		"first_name": "Nikolai",
+		"last_name": "Example",
+		"password": "correct horse battery staple"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler := NewHTTPHandlerWithVerification(NewService(repo, false), sender)
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if !senderCalled {
+		t.Fatal("verification sender was not called")
+	}
+	if senderUserID == "" {
+		t.Fatal("verification sender received an empty user ID")
+	}
+	if senderEmail != "moon@example.com" {
+		t.Fatalf("sender email = %q, want %q", senderEmail, "moon@example.com")
+	}
+}
+
+func TestRegisterHandlerVerificationFailure(t *testing.T) {
+	repo := &httpTestCreator{}
+	sender := VerificationSender(func(
+		_ context.Context,
+		_ string,
+		_ string,
+	) error {
+		return errors.New("SMTP credentials leaked")
+	})
+
+	body := `{
+		"nickname": "moonflux",
+		"email": "moon@example.com",
+		"first_name": "Nikolai",
+		"last_name": "Example",
+		"password": "correct horse battery staple"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler := NewHTTPHandlerWithVerification(NewService(repo, false), sender)
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf(
+			"status = %d, want %d; body: %s",
+			rec.Code,
+			http.StatusInternalServerError,
+			rec.Body.String(),
+		)
+	}
+	if !repo.called {
+		t.Fatal("user was not created before verification email failed")
+	}
+	if strings.Contains(rec.Body.String(), "SMTP credentials leaked") {
+		t.Fatal("response exposes internal SMTP error")
 	}
 }

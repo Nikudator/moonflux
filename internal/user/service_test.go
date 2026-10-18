@@ -22,7 +22,7 @@ func (f *fakeUserCreator) Create(_ context.Context, u User) error {
 
 func TestServiceRegister(t *testing.T) {
 	repo := &fakeUserCreator{}
-	service := NewService(repo)
+	service := NewService(repo, false)
 
 	input := RegisterInput{
 		Nickname:  "  moonflux  ",
@@ -79,7 +79,7 @@ func TestServiceRegister(t *testing.T) {
 
 func TestServiceRegisterRejectsInvalidInput(t *testing.T) {
 	repo := &fakeUserCreator{}
-	service := NewService(repo)
+	service := NewService(repo, false)
 
 	_, err := service.Register(context.Background(), RegisterInput{
 		Nickname:  " ",
@@ -99,7 +99,7 @@ func TestServiceRegisterRejectsInvalidInput(t *testing.T) {
 func TestServiceRegisterRepositoryError(t *testing.T) {
 	repositoryErr := errors.New("database unavailable")
 	repo := &fakeUserCreator{err: repositoryErr}
-	service := NewService(repo)
+	service := NewService(repo, false)
 
 	_, err := service.Register(context.Background(), RegisterInput{
 		Nickname:  "moonflux",
@@ -114,7 +114,7 @@ func TestServiceRegisterRepositoryError(t *testing.T) {
 
 func TestServiceRegisterEmptyOptionalFields(t *testing.T) {
 	repo := &fakeUserCreator{}
-	service := NewService(repo)
+	service := NewService(repo, false)
 
 	email := "  "
 	patronymic := " "
@@ -139,7 +139,7 @@ func TestServiceRegisterEmptyOptionalFields(t *testing.T) {
 
 func TestServiceRegisterTimestamps(t *testing.T) {
 	repo := &fakeUserCreator{}
-	service := NewService(repo)
+	service := NewService(repo, false)
 
 	// Keep this test focused on the timestamps supplied by the service.
 	fixedTime := time.Date(2026, time.October, 14, 0, 0, 0, 0, time.UTC)
@@ -161,7 +161,7 @@ func TestServiceRegisterTimestamps(t *testing.T) {
 
 func TestServiceRegisterDoesNotTrimPassword(t *testing.T) {
 	repo := &fakeUserCreator{}
-	service := NewService(repo)
+	service := NewService(repo, false)
 
 	password := "  password with spaces  "
 	u, err := service.Register(context.Background(), RegisterInput{
@@ -183,5 +183,48 @@ func TestServiceRegisterDoesNotTrimPassword(t *testing.T) {
 	}
 	if !ok {
 		t.Fatal("password whitespace was not preserved")
+	}
+}
+
+func TestServiceRegisterRequiresEmailWhenEnabled(t *testing.T) {
+	repo := &fakeUserCreator{}
+	service := NewService(repo, true)
+
+	_, err := service.Register(context.Background(), RegisterInput{
+		Nickname:  "moonflux",
+		FirstName: "Иван",
+		LastName:  "Иванов",
+		Password:  "a-strong-test-password",
+	})
+
+	if !errors.Is(err, ErrEmailRequired) {
+		t.Fatalf("expected ErrEmailRequired, got %v", err)
+	}
+
+	if repo.calls != 0 {
+		t.Fatalf("expected repository not to be called, got %d calls", repo.calls)
+	}
+}
+
+func TestServiceRegisterAllowsMissingEmailWhenDisabled(t *testing.T) {
+	repo := &fakeUserCreator{}
+	service := NewService(repo, false)
+
+	u, err := service.Register(context.Background(), RegisterInput{
+		Nickname:  "moonflux",
+		FirstName: "Иван",
+		LastName:  "Иванов",
+		Password:  "a-strong-test-password",
+	})
+	if err != nil {
+		t.Fatalf("Register() error = %v, want nil", err)
+	}
+
+	if u.Email != nil {
+		t.Fatalf("Email = %v, want nil", u.Email)
+	}
+
+	if repo.calls != 1 {
+		t.Fatalf("repository calls = %d, want 1", repo.calls)
 	}
 }
