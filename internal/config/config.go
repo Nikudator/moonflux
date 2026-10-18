@@ -5,6 +5,7 @@ import (
 	"fmt"
 	netmail "net/mail"
 	"net/netip"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -91,6 +92,7 @@ type MailFromConfig struct {
 }
 
 type MailVerificationConfig struct {
+	BaseURL        string        `yaml:"base_url"`
 	TokenTTL       time.Duration `yaml:"token_ttl"`
 	ResendCooldown time.Duration `yaml:"resend_cooldown"`
 }
@@ -184,6 +186,9 @@ func (c Config) Validate() error {
 	}
 
 	if c.Mail.Enabled {
+		if !c.Mail.SMTP.StartTLS {
+			problems = append(problems, "mail.smtp.start_tls must be true when mail is enabled")
+		}
 		if strings.TrimSpace(c.Mail.SMTP.Host) == "" {
 			problems = append(problems, "mail.smtp.host is required when mail is enabled")
 		}
@@ -210,6 +215,19 @@ func (c Config) Validate() error {
 		}
 		if c.Mail.Verification.ResendCooldown <= 0 {
 			problems = append(problems, "mail.verification.resend_cooldown must be positive when mail is enabled")
+		}
+		baseURL := strings.TrimSpace(c.Mail.Verification.BaseURL)
+		parsedURL, err := url.Parse(baseURL)
+		if err != nil ||
+			parsedURL == nil ||
+			parsedURL.Scheme != "https" ||
+			parsedURL.Host == "" ||
+			parsedURL.User != nil ||
+			parsedURL.RawQuery != "" ||
+			parsedURL.ForceQuery ||
+			parsedURL.Fragment != "" ||
+			parsedURL.Opaque != "" {
+			problems = append(problems, "mail.verification.base_url must be an absolute HTTPS URL without credentials, query, or fragment")
 		}
 	}
 	if len(problems) > 0 {

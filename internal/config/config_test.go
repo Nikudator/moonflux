@@ -129,6 +129,7 @@ func TestValidateMailEnabled(t *testing.T) {
 			Name:    "Moonflux",
 		},
 		Verification: MailVerificationConfig{
+			BaseURL:        "https://example.com/verify-email",
 			TokenTTL:       24 * time.Hour,
 			ResendCooldown: time.Minute,
 		},
@@ -136,6 +137,54 @@ func TestValidateMailEnabled(t *testing.T) {
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v, want nil for valid mail config", err)
+	}
+}
+
+func TestValidateMailEnabledRejectsInvalidVerificationBaseURL(t *testing.T) {
+	invalidURLs := []string{
+		"http://example.com/verify-email",
+		"/verify-email",
+		"https:///verify-email",
+		"https://user:password@example.com/verify-email",
+		"https://example.com/verify-email?token=secret",
+		"https://example.com/verify-email#fragment",
+	}
+
+	for _, baseURL := range invalidURLs {
+		t.Run(baseURL, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Mail = MailConfig{
+				Enabled: true,
+				SMTP: SMTPConfig{
+					Host:     "smtp.example.com",
+					Port:     587,
+					Username: "moonflux",
+					Password: "test-password",
+					StartTLS: true,
+					Timeout:  10 * time.Second,
+				},
+				From: MailFromConfig{
+					Address: "noreply@example.com",
+					Name:    "Moonflux",
+				},
+				Verification: MailVerificationConfig{
+					BaseURL:        baseURL,
+					TokenTTL:       24 * time.Hour,
+					ResendCooldown: time.Minute,
+				},
+			}
+
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatalf("Validate() error = nil, want error for base URL %q", baseURL)
+			}
+			if !strings.Contains(err.Error(), "mail.verification.base_url") {
+				t.Fatalf(
+					"Validate() error = %v, want base URL validation error",
+					err,
+				)
+			}
+		})
 	}
 }
 
@@ -281,6 +330,20 @@ func TestValidateMailRejectsNegativeDurations(t *testing.T) {
 			},
 			want: "mail.verification.resend_cooldown",
 		},
+		{
+			name: "zero verification token TTL",
+			set: func(mail *MailConfig) {
+				mail.Verification.TokenTTL = 0
+			},
+			want: "mail.verification.token_ttl",
+		},
+		{
+			name: "zero resend cooldown",
+			set: func(mail *MailConfig) {
+				mail.Verification.ResendCooldown = 0
+			},
+			want: "mail.verification.resend_cooldown",
+		},
 	}
 
 	for _, tt := range tests {
@@ -356,6 +419,7 @@ mail:
     address: noreply@example.com
     name: Moonflux
   verification:
+    base_url: "https://example.com/verify-email"
     token_ttl: 24h
     resend_cooldown: 1m
 `
@@ -423,6 +487,7 @@ mail:
     address: noreply@example.com
     name: Moonflux
   verification:
+    base_url: "https://example.com/verify-email"
     token_ttl: 24h
     resend_cooldown: 1m
 `
@@ -438,5 +503,39 @@ mail:
 	}
 	if !strings.Contains(err.Error(), "mail.smtp.host") {
 		t.Fatalf("Load() error = %v, want mail.smtp.host validation error", err)
+	}
+}
+
+func TestValidateMailEnabledRequiresSTARTTLS(t *testing.T) {
+	cfg := validConfig()
+	cfg.Mail = MailConfig{
+		Enabled: true,
+		SMTP: SMTPConfig{
+			Host:     "smtp.example.com",
+			Port:     587,
+			Timeout:  10 * time.Second,
+			StartTLS: false,
+		},
+		From: MailFromConfig{
+			Address: "noreply@example.com",
+			Name:    "Moonflux",
+		},
+		Verification: MailVerificationConfig{
+			BaseURL:        "https://example.com/verify-email",
+			TokenTTL:       24 * time.Hour,
+			ResendCooldown: time.Minute,
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want an error when STARTTLS is disabled")
+	}
+
+	if !strings.Contains(err.Error(), "mail.smtp.start_tls") {
+		t.Fatalf(
+			"Validate() error = %v, want STARTTLS validation error",
+			err,
+		)
 	}
 }

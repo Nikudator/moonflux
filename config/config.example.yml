@@ -60,3 +60,4 @@ mail:
   verification:
     token_ttl: 24h
     resend_cooldown: 1m
+    base_url: "https://example.com/verify-email"
