@@ -66,15 +66,6 @@ func (m *TokenManager) Middleware(
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if err != nil {
-			if errors.Is(err, ErrInvalidToken) || errors.Is(err, ErrExpiredToken) {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			http.Error(w, "authentication unavailable", http.StatusInternalServerError)
-			return
-		}
 
 		ctx := context.WithValue(r.Context(), claimsContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))

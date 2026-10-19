@@ -228,3 +228,32 @@ func TestServiceRegisterAllowsMissingEmailWhenDisabled(t *testing.T) {
 		t.Fatalf("repository calls = %d, want 1", repo.calls)
 	}
 }
+
+func TestServiceRegisterRejectsShortPassword(t *testing.T) {
+	repo := &fakeUserCreator{}
+	service := NewService(repo, false)
+
+	_, err := service.Register(context.Background(), RegisterInput{
+		Nickname: "moonflux", FirstName: "Иван", LastName: "Иванов",
+		Password: "1234567",
+	})
+	if !errors.Is(err, ErrInvalidUser) {
+		t.Fatalf("Register() error = %v, want ErrInvalidUser", err)
+	}
+	if repo.calls != 0 {
+		t.Fatalf("repository calls = %d, want 0", repo.calls)
+	}
+}
+
+func TestServiceRegisterRejectsTooLongPassword(t *testing.T) {
+	repo := &fakeUserCreator{}
+	service := NewService(repo, false)
+
+	_, err := service.Register(context.Background(), RegisterInput{
+		Nickname: "moonflux", FirstName: "Иван", LastName: "Иванов",
+		Password: strings.Repeat("a", 2048),
+	})
+	if !errors.Is(err, ErrInvalidUser) {
+		t.Fatalf("Register() error = %v, want ErrInvalidUser", err)
+	}
+}

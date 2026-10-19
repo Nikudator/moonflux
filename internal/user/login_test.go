@@ -170,3 +170,57 @@ func TestLoginServiceAllowsUnverifiedEmailWhenDisabled(t *testing.T) {
 		t.Fatalf("Authenticate() error = %v, want nil", err)
 	}
 }
+func TestLoginServicePerformsDummyVerificationForUnknownUser(t *testing.T) {
+	repo := &fakeLoginRepository{err: ErrNotFound}
+	service := NewLoginService(repo, false)
+
+	var sawDummy bool
+	service.verifyPassword = func(_, hash string) (bool, error) {
+		if hash == service.dummyPasswordHash {
+			sawDummy = true
+		}
+		return false, nil
+	}
+
+	_, err := service.Authenticate(context.Background(), LoginInput{
+		Login:    "unknown",
+		Password: "some-password",
+	})
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("Authenticate() error = %v, want ErrInvalidCredentials", err)
+	}
+	if !sawDummy {
+		t.Fatal("dummy password verification was not performed for unknown user")
+	}
+}
+
+func TestLoginServiceSkipsDummyVerificationForExistingUser(t *testing.T) {
+	hash, err := HashPassword("correct-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := &fakeLoginRepository{
+		user: User{ID: "user-123", PasswordHash: hash},
+	}
+	service := NewLoginService(repo, false)
+
+	var dummyCalled bool
+	service.verifyPassword = func(_, h string) (bool, error) {
+		if h == service.dummyPasswordHash {
+			dummyCalled = true
+		}
+		// Настоящая проверка не важна в этом тесте.
+		return true, nil
+	}
+
+	_, err = service.Authenticate(context.Background(), LoginInput{
+		Login:    "moonflux",
+		Password: "correct-password",
+	})
+	if err != nil {
+		t.Fatalf("Authenticate() error = %v", err)
+	}
+	if dummyCalled {
+		t.Fatal("dummy verification must not run when the user exists")
+	}
+}

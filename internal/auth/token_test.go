@@ -130,3 +130,32 @@ func TestTokenRejectsNegativeRole(t *testing.T) {
 		t.Fatal("Issue() accepted a negative role")
 	}
 }
+
+func TestTokenRejectsZeroVersion(t *testing.T) {
+	manager := newTestTokenManager(t, time.Now().UTC())
+
+	if _, err := manager.IssueWithVersion("user-123", 1, 0); err == nil {
+		t.Fatal("IssueWithVersion() accepted token_version = 0")
+	}
+}
+
+// Documents the invariant: any token we successfully issue must be
+// accepted by Validate.
+func TestTokenIssuedByIssueWithVersionAlwaysValidates(t *testing.T) {
+	now := time.Date(2026, time.October, 19, 12, 0, 0, 0, time.UTC)
+	manager := newTestTokenManager(t, now)
+
+	for _, version := range []int64{1, 2, 100} {
+		token, err := manager.IssueWithVersion("user-123", 1, version)
+		if err != nil {
+			t.Fatalf("IssueWithVersion(%d) error = %v", version, err)
+		}
+		claims, err := manager.Validate(token)
+		if err != nil {
+			t.Fatalf("Validate() rejected freshly issued token (version %d): %v", version, err)
+		}
+		if claims.TokenVersion != version {
+			t.Errorf("claims.TokenVersion = %d, want %d", claims.TokenVersion, version)
+		}
+	}
+}

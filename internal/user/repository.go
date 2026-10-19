@@ -121,7 +121,13 @@ func (r *Repository) GetByLogin(ctx context.Context, login string) (User, error)
 			role, token_version, birth_date, about, password_hash, created_at, updated_at, deleted_at
 		FROM users
 		WHERE deleted_at IS NULL
-		  AND (nickname = $1 OR email = $1)
+		  AND (
+			lower(nickname) = lower($1)
+			OR (email IS NOT NULL AND lower(email) = lower($1))
+		  )
+		ORDER BY
+			CASE WHEN email IS NOT NULL AND lower(email) = lower($1) THEN 0 ELSE 1 END,
+			id
 		LIMIT 1
 	`, login).Scan(
 		&u.ID, &u.Nickname, &u.Email, &u.EmailVerifiedAt, &u.FirstName, &u.LastName, &u.Patronymic,

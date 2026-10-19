@@ -43,7 +43,7 @@ func (in ProfileUpdateInput) Validate() error {
 	if in.Nickname.Present {
 		if in.Nickname.Null ||
 			strings.TrimSpace(in.Nickname.Value) == "" ||
-			len(in.Nickname.Value) > 40 {
+			len([]rune(in.Nickname.Value)) > 40 {
 			return ErrInvalidUser
 		}
 	}
@@ -51,7 +51,7 @@ func (in ProfileUpdateInput) Validate() error {
 	if in.FirstName.Present {
 		if in.FirstName.Null ||
 			strings.TrimSpace(in.FirstName.Value) == "" ||
-			len(in.FirstName.Value) > 100 {
+			len([]rune(in.FirstName.Value)) > 100 {
 			return ErrInvalidUser
 		}
 	}
@@ -59,13 +59,13 @@ func (in ProfileUpdateInput) Validate() error {
 	if in.LastName.Present {
 		if in.LastName.Null ||
 			strings.TrimSpace(in.LastName.Value) == "" ||
-			len(in.LastName.Value) > 100 {
+			len([]rune(in.LastName.Value)) > 100 {
 			return ErrInvalidUser
 		}
 	}
 
 	if in.Patronymic.Present && !in.Patronymic.Null &&
-		len(in.Patronymic.Value) > 100 {
+		len([]rune(in.Patronymic.Value)) > 100 {
 		return ErrInvalidUser
 	}
 
@@ -94,9 +94,5 @@ func (in PasswordChangeInput) Validate() error {
 		return ErrInvalidUser
 	}
 
-	if len([]rune(in.NewPassword)) < 8 {
-		return ErrInvalidUser
-	}
-
-	return nil
+	return validatePasswordPolicy(in.NewPassword)
 }

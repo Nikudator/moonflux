@@ -18,6 +18,8 @@ const (
 	passwordMemory      = 19 * 1024
 	passwordIterations  = 2
 	passwordParallelism = 1
+	minPasswordRunes    = 8
+	maxPasswordBytes    = 1024
 )
 
 var ErrInvalidPasswordHash = errors.New("invalid password hash")
@@ -114,4 +116,17 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 	)
 
 	return subtle.ConstantTimeCompare(actualKey, expectedKey) == 1, nil
+}
+
+// validatePasswordPolicy enforces the common password length policy
+// for registration and password change.
+func validatePasswordPolicy(password string) error {
+	if len([]rune(password)) < minPasswordRunes {
+		return fmt.Errorf("%w: password must be at least %d characters",
+			ErrInvalidUser, minPasswordRunes)
+	}
+	if len(password) > maxPasswordBytes {
+		return fmt.Errorf("%w: password is too long", ErrInvalidUser)
+	}
+	return nil
 }

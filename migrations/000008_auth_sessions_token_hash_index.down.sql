@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS auth_sessions_token_hash_uq;

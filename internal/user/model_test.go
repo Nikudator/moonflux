@@ -2,6 +2,7 @@ package user
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -99,6 +100,44 @@ func TestUserValidate(t *testing.T) {
 				u.Role = RoleRoot
 			},
 		},
+		{
+			name: "invalid email format",
+			modify: func(u *User) {
+				email := "not-an-email"
+				u.Email = &email
+			},
+			wantErr: true,
+		},
+		{
+			name: "email with display name",
+			modify: func(u *User) {
+				email := "John Doe <john@example.com>"
+				u.Email = &email
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid email with subdomain",
+			modify: func(u *User) {
+				email := "user@mail.example.com"
+				u.Email = &email
+			},
+		},
+		{
+			name: "Cyrillic patronymic at rune limit",
+			modify: func(u *User) {
+				p := strings.Repeat("я", 100) // 100 runes, 200 bytes
+				u.Patronymic = &p
+			},
+		},
+		{
+			name: "Cyrillic patronymic above rune limit",
+			modify: func(u *User) {
+				p := strings.Repeat("я", 101) // 101 runes
+				u.Patronymic = &p
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -151,5 +190,19 @@ func TestUserValidateFieldsDoesNotRequirePasswordHash(t *testing.T) {
 
 	if err := u.Validate(); !errors.Is(err, ErrInvalidUser) {
 		t.Fatalf("Validate() error = %v, want %v", err, ErrInvalidUser)
+	}
+}
+
+func TestUserValidateNicknameLimitsAreRunes(t *testing.T) {
+	u := validTestUser()
+	u.Nickname = strings.Repeat("я", 40) // 40 runes, 80 bytes
+
+	if err := u.Validate(); err != nil {
+		t.Fatalf("Validate() rejected 40-rune Cyrillic nickname: %v", err)
+	}
+
+	u.Nickname = strings.Repeat("я", 41) // 41 rune
+	if !errors.Is(u.Validate(), ErrInvalidUser) {
+		t.Fatal("Validate() accepted 41-rune nickname")
 	}
 }

@@ -100,3 +100,34 @@ func TestLoginServiceReturnsAuthenticationError(t *testing.T) {
 		t.Fatalf("Login() error = %v, want ErrInvalidCredentials", err)
 	}
 }
+
+func TestLoginServiceRejectsZeroTokenVersion(t *testing.T) {
+	manager, err := NewTokenManager(TokenConfig{
+		Issuer: "moonflux",
+		Secret: []byte("test-secret-that-is-at-least-32-bytes-long"),
+		TTL:    15 * time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authenticator := &fakeAuthenticator{
+		user: user.User{
+			ID:           "user-123",
+			Role:         user.RoleUser,
+			TokenVersion: 0, // broken DB row
+		},
+	}
+	service, err := NewLoginService(authenticator, manager)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = service.Login(context.Background(), user.LoginInput{
+		Login:    "moonflux",
+		Password: "correct-password",
+	})
+	if err == nil {
+		t.Fatal("Login() succeeded for user with token_version = 0, want error")
+	}
+}

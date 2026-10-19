@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -40,4 +41,25 @@ func String(id [16]byte) string {
 	b[23] = '-'
 	hex.Encode(b[24:36], id[10:16])
 	return string(b[:])
+}
+
+// Parse decodes a canonical UUID string (8-4-4-4-12 hex with dashes).
+func Parse(s string) ([16]byte, error) {
+	var id [16]byte
+
+	if len(s) != 36 {
+		return id, fmt.Errorf("invalid UUID length: got %d, want 36", len(s))
+	}
+	if s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
+		return id, fmt.Errorf("invalid UUID format")
+	}
+
+	cleaned := strings.ReplaceAll(s, "-", "")
+	if len(cleaned) != 32 {
+		return id, fmt.Errorf("invalid UUID hex length")
+	}
+	if _, err := hex.Decode(id[:], []byte(cleaned)); err != nil {
+		return id, fmt.Errorf("invalid UUID hex: %w", err)
+	}
+	return id, nil
 }

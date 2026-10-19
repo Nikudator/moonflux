@@ -6,11 +6,31 @@ import (
 	"time"
 )
 
+// Outcome enumerates allowed audit outcomes, mirroring the DB CHECK constraint.
+type Outcome string
+
+const (
+	OutcomeSuccess Outcome = "success"
+	OutcomeFailure Outcome = "failure"
+	OutcomeDenied  Outcome = "denied"
+	OutcomeInfo    Outcome = "info"
+)
+
+// valid reports whether the outcome is one of the four values accepted
+// by the audit_logs.outcome CHECK constraint.
+func (o Outcome) valid() bool {
+	switch o {
+	case OutcomeSuccess, OutcomeFailure, OutcomeDenied, OutcomeInfo:
+		return true
+	}
+	return false
+}
+
 type Event struct {
 	ID           string          `json:"id"`
 	OccurredAt   time.Time       `json:"occurred_at"`
 	EventType    string          `json:"event_type"`
-	Outcome      string          `json:"outcome"`
+	Outcome      Outcome         `json:"outcome"`
 	ActorUserID  *string         `json:"actor_user_id,omitempty"`
 	TargetUserID *string         `json:"target_user_id,omitempty"`
 	RequestID    *string         `json:"request_id,omitempty"`

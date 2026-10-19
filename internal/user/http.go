@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 )
 
@@ -27,7 +28,7 @@ type VerificationSender func(
 
 // NewHTTPHandler creates HTTP handlers for user operations.
 func NewHTTPHandler(service *Service) http.Handler {
-	return NewHTTPHandlerWithVerification(service, nil)
+	return NewHTTPHandlerWithVerificationAndLogger(service, nil, nil)
 }
 
 // NewHTTPHandlerWithVerification creates user handlers with optional email verification.
@@ -35,9 +36,22 @@ func NewHTTPHandlerWithVerification(
 	service *Service,
 	sendVerification VerificationSender,
 ) http.Handler {
+	return NewHTTPHandlerWithVerificationAndLogger(service, sendVerification, nil)
+}
+
+// NewHTTPHandlerWithVerificationAndLogger creates user handlers with optional
+// email verification and logging. When logger is nil, slog.Default() is used.
+func NewHTTPHandlerWithVerificationAndLogger(
+	service *Service,
+	sendVerification VerificationSender,
+	logger *slog.Logger,
+) http.Handler {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /users", func(w http.ResponseWriter, r *http.Request) {
-		handleRegister(w, r, service, sendVerification)
+		handleRegister(w, r, service, sendVerification, logger)
 	})
 	return mux
 }
@@ -47,6 +61,7 @@ func handleRegister(
 	r *http.Request,
 	service *Service,
 	sendVerification VerificationSender,
+	logger *slog.Logger,
 ) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRegistrationBodySize)
 
@@ -83,6 +98,10 @@ func handleRegister(
 			writeUserJSON(w, http.StatusBadRequest, map[string]string{
 				"error": "invalid user data",
 			})
+		case errors.Is(err, ErrEmailRequired):
+			writeUserJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "email is required",
+			})
 		case errors.Is(err, ErrConflict):
 			writeUserJSON(w, http.StatusConflict, map[string]string{
 				"error": "nickname or email already exists",
@@ -97,8 +116,15 @@ func handleRegister(
 
 	if sendVerification != nil && created.Email != nil {
 		if err := sendVerification(r.Context(), created.ID, *created.Email); err != nil {
-			http.Error(w, "unable to send verification email", http.StatusInternalServerError)
-			return
+			// The account already exists; failing the request would leave
+			// the client with a 500 on a resource that was successfully created.
+			// The user can request a resend.
+			logger.ErrorContext(
+				r.Context(),
+				"email verification send failed",
+				"event", "user.registration.verification_send_failed",
+				"user_id", created.ID,
+			)
 		}
 	}
 

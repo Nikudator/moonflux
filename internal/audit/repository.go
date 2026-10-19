@@ -7,6 +7,8 @@ import (
 	"net/netip"
 	"time"
 
+	"moonflux/internal/platform/uuid"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,6 +27,14 @@ func (r *Repository) Append(ctx context.Context, e Event) error {
 	if e.Outcome == "" {
 		return fmt.Errorf("audit outcome is required")
 	}
+	if !e.Outcome.valid() {
+		return fmt.Errorf("audit outcome %q is not allowed", e.Outcome)
+	}
+	if e.RequestID != nil && *e.RequestID != "" {
+		if _, err := uuid.Parse(*e.RequestID); err != nil {
+			return fmt.Errorf("audit request_id must be a UUID: %w", err)
+		}
+	}
 	if e.OccurredAt.IsZero() {
 		e.OccurredAt = time.Now().UTC()
 	}
@@ -42,7 +52,7 @@ func (r *Repository) Append(ctx context.Context, e Event) error {
 			http_path, http_status, reason_code, metadata
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
-		)`, e.ID, e.OccurredAt, e.EventType, e.Outcome, e.ActorUserID, e.TargetUserID,
+		)`, e.ID, e.OccurredAt, e.EventType, string(e.Outcome), e.ActorUserID, e.TargetUserID,
 		nullableUUID(e.RequestID), nullableIP(e.ClientIP), nullableIP(e.RemoteIP), e.IPSource,
 		e.UserAgent, e.HTTPMethod, e.HTTPPath, e.HTTPStatus, e.ReasonCode, []byte(metadata))
 	if err != nil {

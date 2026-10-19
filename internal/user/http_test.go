@@ -1,8 +1,10 @@
 package user
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -184,13 +186,12 @@ func TestRegisterHandlerSendsVerification(t *testing.T) {
 	}
 }
 
-func TestRegisterHandlerVerificationFailure(t *testing.T) {
+func TestRegisterHandlerVerificationFailureStillReturns201(t *testing.T) {
 	repo := &httpTestCreator{}
-	sender := VerificationSender(func(
-		_ context.Context,
-		_ string,
-		_ string,
-	) error {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	sender := VerificationSender(func(_ context.Context, _ string, _ string) error {
 		return errors.New("SMTP credentials leaked")
 	})
 
@@ -201,25 +202,49 @@ func TestRegisterHandlerVerificationFailure(t *testing.T) {
 		"last_name": "Example",
 		"password": "correct horse battery staple"
 	}`
-
 	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	handler := NewHTTPHandlerWithVerification(NewService(repo, false), sender)
+	handler := NewHTTPHandlerWithVerificationAndLogger(
+		NewService(repo, false), sender, logger)
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf(
-			"status = %d, want %d; body: %s",
-			rec.Code,
-			http.StatusInternalServerError,
-			rec.Body.String(),
-		)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body = %s", rec.Code, rec.Body.String())
 	}
 	if !repo.called {
-		t.Fatal("user was not created before verification email failed")
+		t.Fatal("user was not created")
 	}
 	if strings.Contains(rec.Body.String(), "SMTP credentials leaked") {
 		t.Fatal("response exposes internal SMTP error")
+	}
+	out := logBuf.String()
+	if !strings.Contains(out, "verification_send_failed") {
+		t.Errorf("expected log entry, got: %s", out)
+	}
+	if strings.Contains(out, "SMTP credentials leaked") {
+		t.Errorf("log leaks internal SMTP error: %s", out)
+	}
+}
+
+func TestRegisterHandlerRequiresEmail(t *testing.T) {
+	repo := &httpTestCreator{}
+	body := `{
+		"nickname": "moonflux",
+		"first_name": "Nikolai",
+		"last_name": "Example",
+		"password": "strong-password-123"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler := NewHTTPHandler(NewService(repo, true)) // requireEmail = true
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if repo.called {
+		t.Fatal("repository must not be called without email")
 	}
 }

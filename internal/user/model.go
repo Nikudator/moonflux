@@ -2,6 +2,7 @@ package user
 
 import (
 	"errors"
+	netmail "net/mail"
 	"strings"
 	"time"
 )
@@ -59,25 +60,32 @@ func (u User) Validate() error {
 // ValidateFields checks user fields independently of the password hash.
 func (u User) ValidateFields() error {
 	if strings.TrimSpace(u.Nickname) == "" ||
-		len(u.Nickname) > 40 {
+		len([]rune(u.Nickname)) > 40 {
 		return ErrInvalidUser
 	}
 
 	if strings.TrimSpace(u.FirstName) == "" ||
-		len(u.FirstName) > 100 {
+		len([]rune(u.FirstName)) > 100 {
 		return ErrInvalidUser
 	}
 
 	if strings.TrimSpace(u.LastName) == "" ||
-		len(u.LastName) > 100 {
+		len([]rune(u.LastName)) > 100 {
 		return ErrInvalidUser
 	}
 
-	if u.Email != nil && len(*u.Email) > 254 {
-		return ErrInvalidUser
+	if u.Email != nil {
+		email := strings.TrimSpace(*u.Email)
+		if len(email) > 254 {
+			return ErrInvalidUser
+		}
+		parsed, err := netmail.ParseAddress(email)
+		if err != nil || parsed.Address != email {
+			return ErrInvalidUser
+		}
 	}
 
-	if u.Patronymic != nil && len(*u.Patronymic) > 100 {
+	if u.Patronymic != nil && len([]rune(*u.Patronymic)) > 100 {
 		return ErrInvalidUser
 	}
 

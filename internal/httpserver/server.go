@@ -113,7 +113,7 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 		))
 	}
 	mux.Handle("POST /users", registrationRateLimiter.Middleware(
-		user.NewHTTPHandlerWithVerification(userService, registrationSender),
+		user.NewHTTPHandlerWithVerificationAndLogger(userService, registrationSender, log),
 	))
 	authHandler := auth.NewHTTPHandler(authService)
 	loginRateLimiter := NewIPRateLimiter(5, time.Minute)
@@ -169,7 +169,14 @@ func NewServer(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (*htt
 		Addr:              cfg.App.HTTPAddress,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		// Bounds the entire request, including the body. Registration,
+		// profile and article handlers cap bodies at 1 MiB via MaxBytesReader,
+		// so 30s is generous even for slow clients.
+		ReadTimeout: 30 * time.Second,
+		// Bounds writing the response. Streaming endpoints do not exist yet;
+		// revisit if a long-lived response (SSE, download) is introduced.
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}, nil
 }
 

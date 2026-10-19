@@ -76,8 +76,10 @@ func (m *TokenManager) IssueWithVersion(
 	if role < 0 {
 		return "", errors.New("token role must not be negative")
 	}
-	if tokenVersion < 0 {
-		return "", errors.New("token version must not be negative")
+	// Validate() rejects tokens with token_version < 1, so refuse to mint
+	// one that we would later reject ourselves.
+	if tokenVersion < 1 {
+		return "", errors.New("token version must be positive")
 	}
 
 	now := m.now().UTC()

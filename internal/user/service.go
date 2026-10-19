@@ -80,6 +80,11 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (User, erro
 	}).ValidateFields(); err != nil {
 		return User{}, err
 	}
+
+	if err := validatePasswordPolicy(input.Password); err != nil {
+		return User{}, err
+	}
+
 	hash, err := HashPassword(input.Password)
 	if err != nil {
 		return User{}, fmt.Errorf("hash registration password: %w", err)
