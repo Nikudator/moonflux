@@ -1,6 +1,8 @@
 package article
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -99,6 +101,74 @@ func TestIsPublishedAt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.article.IsPublishedAt(now); got != tt.want {
 				t.Errorf("IsPublishedAt() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestArticleValidateRejectsFieldOverflow(t *testing.T) {
+	base := Article{
+		ID:      "01900000-0000-7000-8000-000000000001",
+		UserID:  "01900000-0000-7000-8000-000000000002",
+		Title:   "Title",
+		IsDraft: true,
+	}
+
+	cases := []struct {
+		name    string
+		mutate  func(*Article)
+		wantErr bool
+	}{
+		{
+			name:    "title at limit",
+			mutate:  func(a *Article) { a.Title = strings.Repeat("t", MaxTitleRunes) },
+			wantErr: false,
+		},
+		{
+			name:    "title over limit",
+			mutate:  func(a *Article) { a.Title = strings.Repeat("t", MaxTitleRunes+1) },
+			wantErr: true,
+		},
+		{
+			name:    "Cyrillic title at rune limit",
+			mutate:  func(a *Article) { a.Title = strings.Repeat("я", MaxTitleRunes) },
+			wantErr: false,
+		},
+		{
+			name:    "teaser over limit",
+			mutate:  func(a *Article) { a.Teaser = strings.Repeat("t", MaxTeaserRunes+1) },
+			wantErr: true,
+		},
+		{
+			name:    "content over byte limit",
+			mutate:  func(a *Article) { a.Content = strings.Repeat("a", MaxContentBytes+1) },
+			wantErr: true,
+		},
+		{
+			name:    "blank title",
+			mutate:  func(a *Article) { a.Title = "   " },
+			wantErr: true,
+		},
+		{
+			name: "non-draft without published_at",
+			mutate: func(a *Article) {
+				a.IsDraft = false
+				a.PublishedAt = nil
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			a := base
+			tt.mutate(&a)
+			err := a.Validate()
+			if tt.wantErr && !errors.Is(err, ErrInvalidArticle) {
+				t.Fatalf("Validate() error = %v, want ErrInvalidArticle", err)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
 			}
 		})
 	}

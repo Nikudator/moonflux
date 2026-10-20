@@ -12,6 +12,15 @@ var (
 	ErrForbidden      = errors.New("article access forbidden")
 )
 
+const (
+	// MaxTitleRunes bounds the article title in Unicode code points.
+	MaxTitleRunes = 300
+	// MaxTeaserRunes bounds the article teaser in Unicode code points.
+	MaxTeaserRunes = 1000
+	// MaxContentBytes bounds the article body in bytes.
+	MaxContentBytes = 1 << 20 // 1 MiB
+)
+
 // Article represents an article stored in PostgreSQL.
 type Article struct {
 	ID          string
@@ -26,11 +35,26 @@ type Article struct {
 	DeletedAt   *time.Time
 }
 
-// Validate checks the fields required by the article schema.
+// Validate checks required fields and length limits.
 func (a Article) Validate() error {
-	if strings.TrimSpace(a.UserID) == "" ||
-		strings.TrimSpace(a.Title) == "" ||
-		!a.IsDraft && a.PublishedAt == nil {
+	if strings.TrimSpace(a.UserID) == "" {
+		return ErrInvalidArticle
+	}
+
+	title := strings.TrimSpace(a.Title)
+	if title == "" || len([]rune(title)) > MaxTitleRunes {
+		return ErrInvalidArticle
+	}
+
+	if len([]rune(a.Teaser)) > MaxTeaserRunes {
+		return ErrInvalidArticle
+	}
+
+	if len(a.Content) > MaxContentBytes {
+		return ErrInvalidArticle
+	}
+
+	if !a.IsDraft && a.PublishedAt == nil {
 		return ErrInvalidArticle
 	}
 

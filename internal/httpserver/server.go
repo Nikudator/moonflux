@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"moonflux/internal/article"
 	"moonflux/internal/auth"
 	appconfig "moonflux/internal/config"
 	"moonflux/internal/emailverification"
@@ -112,6 +113,41 @@ func New(cfg appconfig.Config, log *slog.Logger, pool *pgxpool.Pool) (http.Handl
 			http.HandlerFunc(verificationHandler.HandleResend),
 		))
 	}
+	// --- articles ---
+	articleRepository := article.NewPostgresRepository(pool)
+	articleService := article.NewService(articleRepository)
+	articleHandler := article.NewHTTPHandler(articleService, func(r *http.Request) (string, bool, bool) {
+		claims, ok := auth.ClaimsFromContext(r.Context())
+		if !ok {
+			return "", false, false
+		}
+		isAdmin := claims.Role >= int(user.RoleAdmin)
+		return claims.Subject, isAdmin, true
+	})
+
+	mux.HandleFunc("GET /articles", articleHandler.ListFeed)
+	mux.HandleFunc("GET /articles/{id}", articleHandler.GetByID)
+	mux.HandleFunc("GET /users/{id}/articles", articleHandler.ListByUser)
+	mux.Handle("POST /articles", tokenManager.Middleware(
+		userRepository,
+		http.HandlerFunc(articleHandler.Create),
+	))
+	mux.Handle("PATCH /articles/{id}", tokenManager.Middleware(
+		userRepository,
+		http.HandlerFunc(articleHandler.Update),
+	))
+	mux.Handle("DELETE /articles/{id}", tokenManager.Middleware(
+		userRepository,
+		http.HandlerFunc(articleHandler.Delete),
+	))
+	mux.Handle("GET /articles/{id}/preview", tokenManager.Middleware(
+		userRepository,
+		http.HandlerFunc(articleHandler.Preview),
+	))
+	mux.Handle("GET /users/me/articles", tokenManager.Middleware(
+		userRepository,
+		http.HandlerFunc(articleHandler.ListOwn),
+	))
 	mux.Handle("POST /users", registrationRateLimiter.Middleware(
 		user.NewHTTPHandlerWithVerificationAndLogger(userService, registrationSender, log),
 	))

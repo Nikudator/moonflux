@@ -22,6 +22,11 @@ type FeedCursor struct {
 type Repository interface {
 	Create(ctx context.Context, article Article) error
 
+	// GetByID returns an active (not soft-deleted) article by ID,
+	// regardless of draft or published state. Callers are responsible
+	// for permission checks.
+	GetByID(ctx context.Context, id string) (Article, error)
+
 	GetPublishedByID(ctx context.Context, id string, now time.Time) (Article, error)
 
 	ListPublic(ctx context.Context, filter FeedFilter, now time.Time) ([]Article, error)

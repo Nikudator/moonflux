@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"moonflux/internal/user"
 )
@@ -31,6 +32,9 @@ func newTestHTTPHandler(t *testing.T, authErr error) *HTTPHandler {
 		user: user.User{
 			ID:   "test-user-id",
 			Role: user.RoleUser,
+			// IssueWithVersion rejects token_version < 1, so the fixture
+			// must model a healthy account.
+			TokenVersion: 1,
 		},
 		err: authErr,
 	}
@@ -38,7 +42,7 @@ func newTestHTTPHandler(t *testing.T, authErr error) *HTTPHandler {
 	tokens, err := NewTokenManager(TokenConfig{
 		Issuer: "moonflux-test",
 		Secret: []byte("test-secret-at-least-32-bytes-long"),
-		TTL:    15 * 60 * 1e9,
+		TTL:    15 * time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("NewTokenManager() error = %v", err)

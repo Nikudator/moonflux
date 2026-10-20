@@ -44,6 +44,22 @@ func (r *PostgresRepository) Create(ctx context.Context, a Article) error {
 	return nil
 }
 
+func (r *PostgresRepository) GetByID(ctx context.Context, id string) (Article, error) {
+	a, err := scanArticle(r.pool.QueryRow(ctx, `
+		SELECT
+			id::text, user_id::text, title, teaser, content, is_draft,
+			created_at, published_at, updated_at, deleted_at
+		FROM articles
+		WHERE id = $1
+		  AND deleted_at IS NULL
+	`, id))
+	if err != nil {
+		return Article{}, fmt.Errorf("get article by id: %w", err)
+	}
+
+	return a, nil
+}
+
 func (r *PostgresRepository) GetPublishedByID(
 	ctx context.Context,
 	id string,
